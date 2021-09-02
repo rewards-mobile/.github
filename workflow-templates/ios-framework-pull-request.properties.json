@@ -1,0 +1,9 @@
+{
+    "name": "(iOS) Build & Test Framework Workflow Template",
+    "description": "Builds & Tests the provided iOS framework.",
+    "iconName": "logo-ios-black",
+    "categories": [
+        "Swift"
+    ],
+    "filePatterns": []
+}

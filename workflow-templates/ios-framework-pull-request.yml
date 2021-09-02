@@ -1,0 +1,151 @@
+#
+#  ios-framework-pull-request.yml
+#
+# Use this workflow for iOS Framework Pull Requests.
+#
+# Notes:
+# • Does not run for "Draft" Pull Requests.
+#
+#  Created by Hickman, James on 8/18/21.
+#  Copyright © 2021 Rakuten Inc. All rights reserved.
+
+name: iOS Framework Pull Request
+
+##############
+# SETUP #
+# Replace the placeholder values in this section with the correct values for the framework you need to test.
+###############
+env:
+  DEVELOPER_DIR: "/Applications/Xcode_12.5.app" # Xcode 12.5 Required to fix Code Coverage error: "This version of Xcode does not support opening result bundles created with versions of Xcode and xcodebuild using the v1 API."
+  PROJECT_PATH: "<YOUR_FRAMEWORK/PATH_TO_PROJECT_FILE>" # Path to Xcode Project or Workspace.
+  SCHEME: "<FRAMEWORK_SCHEME>" # Scheme to run.
+  TARGET_NAME: "<FRAMEWORK_TARGET_NAME>" # Target to use for archiving.
+  DERIVED_DATA_PATH: "DerivedData" # Folder for storing derived data.
+
+  CODE_COVERAGE_TEXT_FILE: "coverage.txt" # File for storing code coverage text.
+  CODE_COVERAGE_JSON_FILE: "coverage.json" # File for storing code coverage json.
+  ACTIONS_ALLOW_UNSECURE_COMMANDS: true # Requires 'true' for Code Coverage to successfully upload.
+
+  DANGER_GITHUB_API_TOKEN: ${{ github.token }} # Required for Danger Action
+  DANGER_GITHUB_API_BASE_URL: "https://api.github.com" # Required for Danger Action
+  DANGER_GITHUB_HOST: "github.com" # Required for Danger Action
+
+##############
+# WARNING #
+# When implementing this template in your own repository, you should not have to make changes to anything below this line unless absolutely necessary.
+# If you do make changes below this line, you should review if the template source file should also be updated here: https://github.com/rewards-mobile/.github/tree/main/workflow-templates
+# You will also need to review other repositories that may have used this template workflow in case they need to be updated as well.
+###############
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches:
+    - '**'
+
+jobs:
+
+  setup:
+    name: Setup
+    runs-on: [mobile, nonprod]
+
+    steps:
+
+      - name: Cancel running builds for this branch
+        uses: styfle/cancel-workflow-action@0.6.0
+        with:
+          access_token: ${{ github.token }}
+
+  run-danger:
+    name: Run Danger
+    needs: [setup]
+    runs-on: [mobile, nonprod]
+
+    steps:
+
+      - name: Checkout Repository
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 1 # Fetches only a single commit by default
+
+      - name: Danger
+        uses: docker://ghcr.io/danger/danger-swift:3.8.0
+        with:
+          args: --failOnErrors --no-publish-check
+
+      # TODO: Update with proper labeling rules.
+      - name: Add PR Labels
+        uses: actions/labeler@v3
+        with:
+          repo-token: ${{ github.token }}
+          sync-labels: true
+
+  build-and-test:
+    name: Build & Test
+    needs: [run-danger]
+    runs-on: macos-11
+    if: github.event.pull_request.draft == false
+
+    steps:
+
+    - name: Build & Test
+      id: buildAndTest
+      uses: rewards-mobile/action-ios-build-and-test-framework@main
+      with:
+        project_path: ${{ env.PROJECT_PATH }}
+        scheme: ${{ env.SCHEME }}
+
+    # NOTE: Must be included in job using `runs-on: macos-x` for access to xcrun
+    - name: Generate Code Coverage Files
+      id: generateCodeCoverage
+      uses: rewards-mobile/action-ios-generate-code-coverage@main
+      with:
+        build_time: ${{ steps.buildAndTest.outputs.build_time }}
+        scheme: ${{ env.SCHEME }}
+        derived_data_path: ${{ env.DERIVED_DATA_PATH }}
+        code_coverage_text_file: ${{ env.CODE_COVERAGE_TEXT_FILE }}
+        code_coverage_json_file: ${{ env.CODE_COVERAGE_JSON_FILE }}
+
+  code-coverage:
+    name: Code Coverage
+    needs: [build-and-test]
+    runs-on: [mobile, nonprod] # Requires [mobile, nonprod] for access to Rakuten AWS instance for InfluxDB.
+    if: github.event.pull_request.draft == false
+
+    steps:
+
+    - name: Log Code Coverage
+      id: logCodeCoverage
+      uses: rewards-mobile/action-ios-log-code-coverage@main
+      with:
+        database_url: "${{ secrets.INFLUXDB_URL }}"
+        code_coverage_text_file: ${{ env.CODE_COVERAGE_TEXT_FILE }}
+
+  slack-messaging:
+    name: Send Slack Message
+    needs: [build-and-test, run-danger, code-coverage]
+    runs-on: [mobile, nonprod]
+    if: | # Send slack messages should always run, even if some 'needs' jobs fail.
+      always() &&
+      github.event.pull_request.draft == false
+
+    steps:
+
+    # Checks previous steps to determine if jobs were successful.
+    - name: Determine Success
+      run: |
+        if [[ "${{ needs.build-and-test.result }}" == "success" \
+        && "${{ needs.run-danger.result }}" == "success" \
+        && "${{ needs.code-coverage.result }}" == "success" \
+        ]]; then
+          echo "SLACK_SUCCESS=true" >> $GITHUB_ENV
+        else
+          echo "SLACK_SUCCESS=false" >> $GITHUB_ENV
+        fi
+
+    - name: Send Slack Message
+      id: sendSlackMessage
+      uses: rewards-mobile/action-ios-send-slack-message@main
+      with:
+        slack_webhook_url: ${{ secrets.MOBILE_SLACK_WEBHOOK_URL }}
+        decryption_passphrase: ${{ secrets.COMPOSITE_ACTION_ENC_PASS }}
+        success: ${{ env.SLACK_SUCCESS }}
