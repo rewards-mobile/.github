@@ -1,0 +1,83 @@
+#
+#  ios-generate-xcframeworks.yml
+#
+# Use this workflow to generate XCFrameworks and commit them.
+#
+#  Created by Hickman, James on 09/02/21.
+#  Copyright © 2021 Rakuten Inc. All rights reserved.
+
+name: iOS Generate XCFrameworks
+
+##############
+# NOTICE #
+# This  workflow will automatically commit the generated XCFrameworks to the `COMMIT_BRANCH` of this repositry.
+###############
+
+env:
+  # An array of JSON objects with key-value pairs for `framework_name`, `target_name`, and `scheme`.
+  # Each framework included in this array will have an XCFramework generated from it.
+  #   framework_name - Must match the folder name for the framework's root directory.
+  #   target_name - Must match the framework's target name.
+  #   scheme - Must match the correct scheme.
+  # EXAMPLE: '["{\"framework_name\": \"Framework1\", \"target_name\": \"Framework1\", \"scheme\": \"Framework1\"}", "{\"framework_name\": \"Framework2\", \"target_name\": \"FrameworkTarget2\", \"scheme\": \"Framework2Scheme\"}"]'
+  FRAMEWORKS: '["{\"framework_name\": \"<YOUR_FRAMEWORK_NAME_1>\", \"target_name\": \"<YOUR_FRAMEWORK_TARGET_1>\", \"scheme\": \"<YOUR_FRAMEWORK_SCHEME_1>\"}", "{\"framework_name\": \"<YOUR_FRAMEWORK_NAME_1>\", \"target_name\": \"<YOUR_FRAMEWORK_TARGET_1>\", \"scheme\": \"<YOUR_FRAMEWORK_SCHEME_2>\"}"]'
+  COMMIT_BRANCH: "main" # Branch to commit the generated XCFrameworks to.
+on:
+  push:
+    branches:
+    - main # Must match COMMIT_BRANCH
+
+jobs:
+
+  generate-xcframeworks:
+    name: Generate XCFrameworks
+    runs-on: [macos-11]
+
+    steps:
+
+    - name: Generate XCFrameworks
+      id: generateXcFrameworks
+      uses: rewards-mobile/action-ios-generate-xcframeworks@main
+      with:
+        frameworks: ${{ env.FRAMEWORKS }}
+        commit_branch: ${{ env.COMMIT_BRANCH }}
+
+    - name: Save Framework Names
+      run: echo "XCFRAMEWORK_NAMES=${{ steps.generateXcFrameworks.outputs.xcframework_names }}" >> $GITHUB_ENV
+
+    - name: Add & Commit
+      uses: EndBug/add-and-commit@v7.2.1
+      with:
+        add: ${{ env.XCFRAMEWORK_NAMES }}
+        default_author: github_actions
+        message: Generated new XCFrameworks for ${{ env.XCFRAMEWORK_NAMES }}
+        branch: ${{ inputs.commit_branch }}
+
+  slack-messaging:
+    name: Send Slack Message
+    needs: [generate-xcframeworks]
+    runs-on: [mobile, nonprod]
+    if: | # Send slack messages should always run, even if some 'needs' jobs fail.
+      always()
+
+    steps:
+
+    # Checks previous steps to determine if jobs were successful.
+    - name: Determine Success
+      run: |
+        IFS=,
+        XCFRAMEWORKS=$(echo "${{ env.XCFRAMEWORK_NAMES }}")
+        if [ -z "${XCFRAMEWORKS}" ]
+        then
+          echo "SLACK_SUCCESS=false" >> $GITHUB_ENV
+        else
+          echo "SLACK_SUCCESS=true" >> $GITHUB_ENV
+        fi
+
+    - name: Send Slack Message
+      id: sendSlackMessage
+      uses: rewards-mobile/action-ios-send-slack-message@main
+      with:
+        slack_webhook_url: ${{ secrets.MOBILE_SLACK_WEBHOOK_URL }}
+        decryption_passphrase: ${{ secrets.COMPOSITE_ACTION_ENC_PASS }}
+        success: ${{ env.SLACK_SUCCESS }}

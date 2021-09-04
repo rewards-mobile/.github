@@ -1,0 +1,9 @@
+{
+    "name": "(iOS) Generate XCFrameworks Workflow Template",
+    "description": "Generates XCFrameworks from provided Objective-C Frameworks.",
+    "iconName": "logo-ios-black",
+    "categories": [
+        "Swift"
+    ],
+    "filePatterns": []
+}
