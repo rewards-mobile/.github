@@ -1,9 +1,15 @@
 #
 #  ios-generate-xcframeworks.yml
 #
-# Use this workflow to generate XCFrameworks and commit them.
+#  Use this workflow to generate XCFrameworks and commit them.
 #
-#  Created by Hickman, James on 09/02/21.
+#  Created on 9/02/21.
+#
+#  Authors:
+#  Genki Mine
+#  James Hickman
+#  Alvaro Garcia Yaguez
+#
 #  Copyright © 2021 Rakuten Inc. All rights reserved.
 
 name: iOS Generate XCFrameworks
