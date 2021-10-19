@@ -1,12 +1,16 @@
 #
 #  ios-framework-pull-request.yml
 #
-# Use this workflow for iOS Framework Pull Requests.
+#  Use this workflow for iOS Framework Pull Requests.
 #
-# Notes:
-# • Does not run for "Draft" Pull Requests.
+#  Created on 8/18/21.
 #
-#  Created by Hickman, James on 8/18/21.
+#  Authors:
+#  Genki Mine
+#  James Hickman
+#  Alvaro Garcia Yaguez
+#  Ahmed Farghaly
+#
 #  Copyright © 2021 Rakuten Inc. All rights reserved.
 
 name: iOS Framework Pull Request
